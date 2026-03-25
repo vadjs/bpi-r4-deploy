@@ -1,0 +1,139 @@
+name: Build BPI-R4 Rescue
+
+on:
+  workflow_dispatch:
+    inputs:
+      openwrt_commit:
+        description: 'OpenWrt commit hash (leave empty for latest)'
+        required: false
+        default: ''
+      mtk_commit:
+        description: 'mtk-openwrt-feeds commit hash (leave empty for latest)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space on runner
+        run: |
+          sudo rm -rf \
+            "$AGENT_TOOLSDIRECTORY" \
+            /opt/ghc \
+            /opt/google/chrome \
+            /opt/microsoft/msedge \
+            /opt/microsoft/powershell \
+            /opt/pipx \
+            /usr/lib/mono \
+            /usr/local/julia* \
+            /usr/local/lib/android \
+            /usr/local/lib/node_modules \
+            /usr/local/share/chromium \
+            /usr/local/share/powershell \
+            /usr/share/dotnet \
+            /usr/share/swift
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
+            gettext libncurses-dev libssl-dev python3-distutils python3-setuptools \
+            rsync swig unzip zlib1g-dev file wget libelf-dev ccache git
+
+      - name: Show disk space
+        run: df -h
+
+      - name: Run builder script
+        run: |
+          chmod +x ./bpi-r4-openwrt-builder.rescue.sh
+          OPENWRT_COMMIT="${{ github.event.inputs.openwrt_commit }}" \
+          MTK_COMMIT="${{ github.event.inputs.mtk_commit }}" \
+          ./bpi-r4-openwrt-builder.rescue.sh
+
+      - name: List built images
+        if: always()
+        run: |
+          ls -R openwrt/bin/targets || true
+
+      - name: Generate sha256sums
+        if: success()
+        run: |
+          cd openwrt/bin/targets/mediatek/filogic
+          sha256sum \
+            openwrt-mediatek-filogic-bananapi_bpi-r4-snand-img.bin \
+            openwrt-mediatek-filogic-bananapi_bpi-r4-emmc-img.bin \
+            openwrt-mediatek-filogic-bananapi_bpi-r4-sdcard.img.gz \
+            > sha256sums
+
+      - name: Set tag name
+        id: vars
+        run: |
+          if [ -n "${{ github.event.inputs.openwrt_commit }}" ]; then
+            echo "tag_name=rescue-${{ github.event.inputs.openwrt_commit }}" >> "$GITHUB_OUTPUT"
+            echo "release_name=BPI-R4 Rescue (${{ github.event.inputs.openwrt_commit }})" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_name=rescue-latest" >> "$GITHUB_OUTPUT"
+            echo "release_name=BPI-R4 Rescue (latest)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag_name }}
+          name: ${{ steps.vars.outputs.release_name }}
+          body: |
+            Built from OpenWrt commit: ${{ github.event.inputs.openwrt_commit || 'latest' }}
+            mtk-openwrt-feeds commit: ${{ github.event.inputs.mtk_commit || 'latest' }}
+          draft: false
+          prerelease: false
+          files: |
+            openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-snand-img.bin
+            openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-emmc-img.bin
+            openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-sdcard.img.gz
+            openwrt/bin/targets/mediatek/filogic/sha256sums
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete older releases (keep latest)
+        if: success() && github.event.inputs.openwrt_commit == ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+
+            const releases = await github.rest.repos.listReleases({
+              owner,
+              repo,
+              per_page: 100
+            });
+
+            const autoReleases = releases.data.filter(
+              rel => rel.tag_name === 'rescue-latest'
+            );
+
+            autoReleases.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+            const toDelete = autoReleases.slice(1);
+
+            for (const rel of toDelete) {
+              await github.rest.repos.deleteRelease({
+                owner,
+                repo,
+                release_id: rel.id
+              }).catch(e => {
+                console.log(`Failed to delete release ${rel.id}: ${e.message}`);
+              });
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
