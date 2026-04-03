@@ -1,0 +1,19 @@
+#!/bin/sh
+# /etc/uci-defaults/99-set-hostname
+
+if grep -q 'fit0' /proc/partitions; then
+    if grep -q 'mmcblk0boot0' /proc/partitions; then
+        hostname="BPI-R4-NVMe"
+    else
+        hostname="BPI-R4-NVMe"
+    fi
+elif grep -q 'mmcblk0boot0' /proc/partitions; then
+    hostname="BPI-R4-eMMC"
+elif grep -q 'mmcblk0' /proc/partitions; then
+    hostname="BPI-R4-SD"
+else
+    hostname="BPI-R4"
+fi
+
+uci set system.@system[0].hostname="$hostname"
+uci commit system

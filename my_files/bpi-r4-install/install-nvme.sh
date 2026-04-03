@@ -1,7 +1,13 @@
 #!/bin/sh
 # install-nvme.sh — BPI-R4 NVMe install script
+# Run from nand-rescue system
+# Required files in /tmp:
+#   - openwrt-mediatek-filogic-bananapi_bpi-r4-squashfs-sysupgrade.itb
+#   - openwrt-mediatek-filogic-bananapi_bpi-r4-nvme-img.bin (first install only)
 
 NVME_DEV="/dev/nvme0n1"
+ITB="/tmp/openwrt-mediatek-filogic-bananapi_bpi-r4-squashfs-sysupgrade.itb"
+IMG="/tmp/openwrt-mediatek-filogic-bananapi_bpi-r4-nvme-img.bin"
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
@@ -13,9 +19,25 @@ printf "  BPI-R4 NVMe Installer\n"
 printf "=================================================\n"
 printf "\n"
 
-# ¦¦ 1. NVMe device check ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦
+# || 1. Check sysupgrade.itb ||||||||||||||||||||||||||||||||||||||||||||||||||
 
-printf "[ 1/5 ] Checking NVMe device...\n"
+printf "[ 1/6 ] Checking sysupgrade image...\n"
+
+if [ ! -f "$ITB" ]; then
+    printf "\n"
+    printf "${RED}ERROR: Image not found: %s${NC}\n" "$ITB"
+    printf "       Copy sysupgrade.itb to /tmp/ and try again.\n"
+    printf "\n"
+    exit 1
+fi
+
+printf "        OK -- found %s\n" "$ITB"
+printf "        Size: %s bytes\n" "$(wc -c < "$ITB")"
+printf "\n"
+
+# || 2. NVMe device check |||||||||||||||||||||||||||||||||||||||||||||||||||||
+
+printf "[ 2/6 ] Checking NVMe device...\n"
 
 if [ ! -b "$NVME_DEV" ]; then
     printf "\n"
@@ -28,9 +50,9 @@ fi
 printf "        OK -- found %s\n" "$NVME_DEV"
 printf "\n"
 
-# ¦¦ 2. SMART health check ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦
+# || 3. SMART health check ||||||||||||||||||||||||||||||||||||||||||||||||||||
 
-printf "[ 2/5 ] Checking disk health (SMART)...\n"
+printf "[ 3/6 ] Checking disk health (SMART)...\n"
 printf "\n"
 
 SMART_OUT=$(smartctl -a "$NVME_DEV" 2>/dev/null)
@@ -47,7 +69,6 @@ if [ -z "$SMART_SKIP" ]; then
     FAIL=0
     WARN=0
 
-    # --- Model / serial / capacity (info) ---
     MODEL=$(echo "$SMART_OUT" | grep "Model Number"       | sed 's/.*: *//')
     SERIAL=$(echo "$SMART_OUT" | grep "Serial Number"     | sed 's/.*: *//')
     CAPACITY=$(echo "$SMART_OUT" | grep "Total NVM Capacity" | sed 's/.*: *//')
@@ -56,65 +77,49 @@ if [ -z "$SMART_SKIP" ]; then
     printf "        Capacity: %s\n" "$CAPACITY"
     printf "\n"
 
-    # --- HARD FAIL checks ---
-
-    # 1) SMART overall health
     HEALTH=$(echo "$SMART_OUT" | grep "SMART overall-health" | grep -o "PASSED\|FAILED")
     if [ "$HEALTH" = "FAILED" ]; then
         printf "${RED}  [FAIL] SMART overall-health: FAILED${NC}\n"
-        printf "         Disk reports a critical failure. Installation not possible.\n"
         FAIL=1
     else
         printf "${GREEN}  [ OK ] SMART overall-health: PASSED${NC}\n"
     fi
 
-    # 2) Critical Warning
     CRIT=$(echo "$SMART_OUT" | grep "Critical Warning" | awk '{print $NF}')
     if [ "$CRIT" != "0x00" ] && [ -n "$CRIT" ]; then
         printf "${RED}  [FAIL] Critical Warning: %s${NC}\n" "$CRIT"
-        printf "         Disk has an active critical problem. Installation not possible.\n"
         FAIL=1
     else
         printf "${GREEN}  [ OK ] Critical Warning: %s${NC}\n" "$CRIT"
     fi
 
-    # 3) Available Spare
     SPARE=$(echo "$SMART_OUT" | grep "Available Spare:" | grep -v Threshold | awk '{print $NF}' | tr -d '%')
     if [ -n "$SPARE" ] && [ "$SPARE" -lt 10 ]; then
         printf "${RED}  [FAIL] Available Spare: %s%%${NC}\n" "$SPARE"
-        printf "         Disk has no spare cells remaining. Installation not possible.\n"
         FAIL=1
     else
         printf "${GREEN}  [ OK ] Available Spare: %s%%${NC}\n" "$SPARE"
     fi
 
-    # 4) Percentage Used
     USED=$(echo "$SMART_OUT" | grep "Percentage Used" | awk '{print $NF}' | tr -d '%')
     if [ -n "$USED" ] && [ "$USED" -ge 100 ]; then
         printf "${RED}  [FAIL] Percentage Used: %s%%${NC}\n" "$USED"
-        printf "         Disk is fully worn out. Installation not possible.\n"
         FAIL=1
     else
         printf "${GREEN}  [ OK ] Percentage Used: %s%%${NC}\n" "$USED"
     fi
 
-    # --- WARN checks ---
-
-    # 5) Media and Data Integrity Errors
     MEDIA_ERR=$(echo "$SMART_OUT" | grep "Media and Data Integrity Errors" | awk '{print $NF}')
     if [ -n "$MEDIA_ERR" ] && [ "$MEDIA_ERR" -gt 0 ]; then
         printf "${YELLOW}  [WARN] Media and Data Integrity Errors: %s${NC}\n" "$MEDIA_ERR"
-        printf "         Data integrity errors have been recorded.\n"
         WARN=1
     else
         printf "${GREEN}  [ OK ] Media and Data Integrity Errors: %s${NC}\n" "$MEDIA_ERR"
     fi
 
-    # 6) Temperature
     TEMP=$(echo "$SMART_OUT" | grep "^Temperature:" | awk '{print $2}')
     if [ -n "$TEMP" ] && [ "$TEMP" -ge 70 ]; then
         printf "${YELLOW}  [WARN] Disk temperature: %s C${NC}\n" "$TEMP"
-        printf "         Disk is overheating -- check cooling.\n"
         WARN=1
     else
         printf "${GREEN}  [ OK ] Disk temperature: %s C${NC}\n" "$TEMP"
@@ -122,46 +127,63 @@ if [ -z "$SMART_SKIP" ]; then
 
     printf "\n"
 
-    # --- Result ---
-
     if [ "$FAIL" -eq 1 ]; then
         printf "${RED}=================================================${NC}\n"
-        printf "${RED}  This disk is not suitable for OS installation.${NC}\n"
-        printf "${RED}  Please use a different disk.${NC}\n"
+        printf "${RED}  Disk is not suitable for installation.${NC}\n"
         printf "${RED}=================================================${NC}\n"
         printf "\n"
         exit 1
     fi
 
     if [ "$WARN" -eq 1 ]; then
-        printf "${YELLOW}=================================================${NC}\n"
-        printf "${YELLOW}  Disk is usable but warnings were found.${NC}\n"
-        printf "${YELLOW}=================================================${NC}\n"
-        printf "\n"
-        printf "  Continue with installation anyway? [y/N] "
+        printf "${YELLOW}  Disk has warnings. Continue anyway? [y/N] ${NC}"
         read ANSWER
         case "$ANSWER" in
             y|Y) printf "\n" ;;
             *)
-                printf "  Installation cancelled.\n"
-                printf "\n"
+                printf "  Installation cancelled.\n\n"
                 exit 1
                 ;;
         esac
-    fi
-
-    if [ "$FAIL" -eq 0 ] && [ "$WARN" -eq 0 ]; then
-        printf "${GREEN}=================================================${NC}\n"
-        printf "${GREEN}  Disk is healthy. Proceeding with installation.${NC}\n"
-        printf "${GREEN}=================================================${NC}\n"
+    else
+        printf "${GREEN}  Disk is healthy. Proceeding.${NC}\n"
         printf "\n"
     fi
 
 fi
 
-# ¦¦ 3. Unmount existing partitions ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦
+# || 4. Detect install type |||||||||||||||||||||||||||||||||||||||||||||||||||
 
-printf "[ 3/5 ] Unmounting NVMe partitions...\n"
+printf "[ 4/6 ] Detecting install type...\n"
+
+if [ -b "/dev/nvme0n1p1" ] && [ -b "/dev/nvme0n1p2" ]; then
+    mkdir -p /mnt/nvme_check
+    if mount -t ext4 /dev/nvme0n1p1 /mnt/nvme_check 2>/dev/null; then
+        umount /mnt/nvme_check
+        INSTALL_TYPE="update"
+        printf "        Existing NVMe layout detected -- UPDATE mode\n"
+    else
+        INSTALL_TYPE="first"
+        printf "        Partitions exist but p1 is not ext4 -- FIRST INSTALL mode\n"
+    fi
+else
+    INSTALL_TYPE="first"
+    printf "        No valid layout detected -- FIRST INSTALL mode\n"
+fi
+
+if [ "$INSTALL_TYPE" = "first" ] && [ ! -f "$IMG" ]; then
+    printf "\n"
+    printf "${RED}ERROR: First install requires nvme-img.bin${NC}\n"
+    printf "       Copy nvme-img.bin to /tmp/ and try again.\n"
+    printf "\n"
+    exit 1
+fi
+
+printf "\n"
+
+# || 5. Unmount existing partitions ||||||||||||||||||||||||||||||||||||||||||
+
+printf "[ 5/6 ] Unmounting NVMe partitions...\n"
 
 MOUNTED=$(mount | grep "^/dev/nvme0" | awk '{print $1}')
 if [ -n "$MOUNTED" ]; then
@@ -169,10 +191,7 @@ if [ -n "$MOUNTED" ]; then
         printf "        Unmounting %s...\n" "$DEV"
         umount "$DEV" 2>/dev/null
         if mount | grep -q "^$DEV "; then
-            printf "\n"
             printf "${RED}ERROR: Could not unmount %s.${NC}\n" "$DEV"
-            printf "       Close any processes using the disk and try again.\n"
-            printf "\n"
             exit 1
         fi
     done
@@ -182,94 +201,9 @@ else
 fi
 printf "\n"
 
-# ¦¦ 4. Download nvme-img.bin ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦
+# || 6. Write image |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
 
-IMG="/tmp/nvme-img.bin"
-IMG_URL="https://github.com/woziwrt/bpi-r4-rescue/releases/download/rescue-latest/nvme-img.bin"
-
-printf "[ 4/5 ] Acquiring nvme-img.bin...\n"
-printf "\n"
-printf "  [1] Download from GitHub\n"
-printf "  [2] Load from USB drive\n"
-printf "\n"
-printf "  Select source [1/2]: "
-read SRC
-
-case "$SRC" in
-
-    1)
-        printf "\n"
-        printf "        Checking network...\n"
-        if ! ping -c 1 -W 3 github.com > /dev/null 2>&1; then
-            printf "\n"
-            printf "${RED}ERROR: No network connectivity (cannot reach github.com).${NC}\n"
-            printf "       Check your network connection and try again.\n"
-            printf "\n"
-            exit 1
-        fi
-        printf "        OK -- network reachable\n"
-        printf "        Downloading nvme-img.bin (~103 MB)...\n"
-        printf "\n"
-        wget -O "$IMG" "$IMG_URL"
-        if [ $? -ne 0 ] || [ ! -s "$IMG" ]; then
-            printf "\n"
-            printf "${RED}ERROR: Download failed.${NC}\n"
-            printf "       Check network connection or use USB fallback.\n"
-            printf "\n"
-            rm -f "$IMG"
-            exit 1
-        fi
-        printf "\n"
-        printf "        OK -- download complete\n"
-        ;;
-
-    2)
-        printf "\n"
-        printf "        Looking for USB drive...\n"
-        USB_DEV=$(ls /dev/sd*1 2>/dev/null | head -1)
-        if [ -z "$USB_DEV" ]; then
-            printf "\n"
-            printf "${RED}ERROR: No USB drive found (/dev/sd*1).${NC}\n"
-            printf "       Insert USB drive and try again.\n"
-            printf "\n"
-            exit 1
-        fi
-        printf "        Found %s -- mounting...\n" "$USB_DEV"
-        mkdir -p /mnt/usb
-        mount "$USB_DEV" /mnt/usb 2>/dev/null
-        if [ $? -ne 0 ]; then
-            printf "\n"
-            printf "${RED}ERROR: Could not mount %s.${NC}\n" "$USB_DEV"
-            printf "\n"
-            exit 1
-        fi
-        if [ ! -f "/mnt/usb/nvme-img.bin" ]; then
-            printf "\n"
-            printf "${RED}ERROR: nvme-img.bin not found on USB drive.${NC}\n"
-            printf "       Copy nvme-img.bin to the root of the USB drive.\n"
-            printf "\n"
-            umount /mnt/usb
-            exit 1
-        fi
-        printf "        Copying nvme-img.bin from USB...\n"
-        cp /mnt/usb/nvme-img.bin "$IMG"
-        umount /mnt/usb
-        printf "        OK -- file ready\n"
-        ;;
-
-    *)
-        printf "\n"
-        printf "${RED}ERROR: Invalid selection.${NC}\n"
-        printf "\n"
-        exit 1
-        ;;
-esac
-
-printf "\n"
-
-# ¦¦ 5. Write image to disk ¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦
-
-printf "[ 5/5 ] Writing image to %s...\n" "$NVME_DEV"
+printf "[ 6/6 ] Writing image...\n"
 printf "\n"
 printf "${RED}  WARNING: This will ERASE ALL DATA on %s.${NC}\n" "$NVME_DEV"
 printf "\n"
@@ -277,39 +211,64 @@ printf "  Are you sure? Type YES to confirm: "
 read CONFIRM
 
 if [ "$CONFIRM" != "YES" ]; then
-    printf "\n"
-    printf "  Installation cancelled.\n"
-    printf "\n"
-    rm -f "$IMG"
+    printf "\n  Installation cancelled.\n\n"
     exit 1
 fi
 
 printf "\n"
-printf "        Writing... (do not power off)\n"
-printf "\n"
 
-dd if="$IMG" of="$NVME_DEV" bs=1M conv=fsync status=progress
-
-if [ $? -ne 0 ]; then
+if [ "$INSTALL_TYPE" = "first" ]; then
+    printf "        Writing partition layout (nvme-img.bin)...\n"
+    dd if="$IMG" of="$NVME_DEV" bs=1M conv=fsync
+    if [ $? -ne 0 ]; then
+        printf "\n${RED}ERROR: dd nvme-img.bin failed.${NC}\n\n"
+        exit 1
+    fi
+    sync
+    partprobe "$NVME_DEV" 2>/dev/null
+    sleep 2
+    printf "        OK\n\n"
+    printf "        Formatting boot partition (p1 ext4)...\n"
+    mkfs.ext4 -F /dev/nvme0n1p1
     printf "\n"
-    printf "${RED}ERROR: dd failed. Disk may be in inconsistent state.${NC}\n"
-    printf "\n"
-    rm -f "$IMG"
-    exit 1
 fi
 
-printf "\n"
-printf "        Syncing...\n"
+printf "        Writing kernel to p1...\n"
+mkdir -p /mnt/nvme
+mount /dev/nvme0n1p1 /mnt/nvme
+cp "$ITB" /mnt/nvme/bpi-r4.itb
 sync
+umount /dev/nvme0n1p1
+printf "        OK -- kernel written to p1\n\n"
 
-rm -f "$IMG"
-printf "        Cleanup done\n"
-printf "\n"
+printf "        Writing rootfs to p2 (raw FIT)...\n"
+dd if="$ITB" of=/dev/nvme0n1p2 bs=1M conv=fsync
+if [ $? -ne 0 ]; then
+    printf "\n${RED}ERROR: dd rootfs failed.${NC}\n\n"
+    exit 1
+fi
+sync
+printf "        OK -- rootfs written to p2\n\n"
+
+# || Set nvme_boot env and reboot |||||||||||||||||||||||||||||||||||||||||||||
 
 printf "${GREEN}=================================================${NC}\n"
 printf "${GREEN}  Installation complete!${NC}\n"
 printf "${GREEN}=================================================${NC}\n"
 printf "\n"
-printf "  Next step: set DIP switches SW3-A=1, SW3-B=1\n"
-printf "             then reboot into NVMe.\n"
-printf "\n"
+
+if [ "$INSTALL_TYPE" = "first" ]; then
+    printf "        Setting U-Boot env for NVMe boot...\n"
+    fw_setenv nvme_boot 1
+    printf "        Rebooting into NVMe system...\n"
+    printf "\n"
+    sleep 2
+    reboot
+else
+    printf "  Update done. Reboot to apply.\n"
+    printf "\n"
+fi
+
+# NOTE: Future — auto download from GitHub release:
+# wget -O /tmp/nvme-img.bin   "https://github.com/.../nvme-img.bin"
+# wget -O /tmp/sysupgrade.itb "https://github.com/.../sysupgrade.itb"
