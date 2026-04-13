@@ -235,7 +235,7 @@ The URL is displayed so you can verify it before the download starts.
 
 - This build is for Banana Pi BPI-R4 only (MT7988, 2x SFP+).
 - OpenWrt and MTK SDK commits are pinned in the build script. Updating them requires manual editing.
-- 8 GB RAM variant of BPI-R4 should work — RAM is detected automatically at boot.
+- 8 GB RAM variants (`bpi-r4-8g`, `bpi-r4-poe-8g`) are separate build targets. The standard 4 GB image limits Linux to 4 GB even on 8 GB hardware — use the dedicated 8 GB images to expose the full memory.
 - Docker is included in the NVMe build but does not start automatically. To start Docker: `/etc/init.d/dockerd start`
 
 ### Notes about GitHub runners

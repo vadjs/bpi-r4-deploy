@@ -755,6 +755,26 @@ define Device/bananapi_bpi-r4-poe
 endef
 TARGET_DEVICES += bananapi_bpi-r4-poe
 
+define Device/bananapi_bpi-r4-8g
+  DEVICE_MODEL := BPi-R4 (8GB)
+  DEVICE_DTS := mt7988a-bananapi-bpi-r4-8g
+  DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4-8g
+  $(call Device/bananapi_bpi-r4-common)
+  UBINIZE_PARTS := fip=:$(STAGING_DIR_IMAGE)/mt7988_bananapi_bpi-r4-8g-snand-u-boot.fip
+endef
+TARGET_DEVICES += bananapi_bpi-r4-8g
+
+define Device/bananapi_bpi-r4-poe-8g
+  DEVICE_MODEL := BPi-R4 2.5GE (8GB)
+  DEVICE_DTS := mt7988a-bananapi-bpi-r4-2g5-8g
+  DEVICE_DTS_CONFIG := config-mt7988a-bananapi-bpi-r4-poe-8g
+  $(call Device/bananapi_bpi-r4-common)
+  DEVICE_PACKAGES += mt798x-2p5g-phy-firmware-internal kmod-mt798x-2p5g-phy
+  SUPPORTED_DEVICES += bananapi,bpi-r4-2g5-8g
+  UBINIZE_PARTS := fip=:$(STAGING_DIR_IMAGE)/mt7988_bananapi_bpi-r4-poe-8g-snand-u-boot.fip
+endef
+TARGET_DEVICES += bananapi_bpi-r4-poe-8g
+
 define Device/bananapi_bpi-r4-lite
   DEVICE_VENDOR := Bananapi
   DEVICE_MODEL := BPi-R4 Lite

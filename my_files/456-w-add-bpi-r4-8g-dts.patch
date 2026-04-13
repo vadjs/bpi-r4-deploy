@@ -1,0 +1,40 @@
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4-8g.dts
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * 8 GB RAM variant of Bananapi BPi-R4 (MT7988A)
++ * Identical to bpi-r4 but with 8 GB memory node.
++ */
++
++#include "mt7988a-bananapi-bpi-r4.dts"
++
++/ {
++	compatible = "bananapi,bpi-r4-8g", "mediatek,mt7988a";
++	model = "Bananapi BPi-R4 (8GB)";
++
++	memory@40000000 {
++		device_type = "memory";
++		reg = <0x0 0x40000000 0x2 0x00000000>;
++	};
++};
+--- /dev/null
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4-2g5-8g.dts
+@@ -0,0 +1,13 @@
++// SPDX-License-Identifier: (GPL-2.0 OR MIT)
++/*
++ * 8 GB RAM variant of Bananapi BPi-R4 POE/2.5GE (MT7988A)
++ * Identical to bpi-r4-2g5 but with 8 GB memory node.
++ */
++
++#include "mt7988a-bananapi-bpi-r4-2g5.dts"
++
++/ {
++	compatible = "bananapi,bpi-r4-2g5-8g", "mediatek,mt7988a";
++	model = "Bananapi BPi-R4 2.5GE (8GB)";
++
++	memory@40000000 {
++		device_type = "memory";
++		reg = <0x0 0x40000000 0x2 0x00000000>;
++	};
++};
