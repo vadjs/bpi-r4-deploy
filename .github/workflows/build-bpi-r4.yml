@@ -112,12 +112,14 @@ jobs:
         run: |
           cd openwrt/bin/targets/mediatek/filogic
           cp openwrt-mediatek-filogic-bananapi_bpi-r4-squashfs-sysupgrade.itb bpi-r4.itb
+          cp openwrt-mediatek-filogic-bananapi_bpi-r4-poe-squashfs-sysupgrade.itb bpi-r4-poe.itb
 
       - name: Prepare SD/eMMC artifacts
         if: github.event.inputs.build_type == 'sdcard'
         run: |
           cd openwrt/bin/targets/mediatek/filogic
           cp openwrt-mediatek-filogic-bananapi_bpi-r4-squashfs-sysupgrade.itb bpi-r4.itb
+          cp openwrt-mediatek-filogic-bananapi_bpi-r4-poe-squashfs-sysupgrade.itb bpi-r4-poe.itb
 
       - name: Generate sha256sums
         run: |
@@ -126,12 +128,17 @@ jobs:
             sha256sum \
               openwrt-mediatek-filogic-bananapi_bpi-r4-nvme-img.bin \
               bpi-r4.itb \
+              openwrt-mediatek-filogic-bananapi_bpi-r4-poe-nvme-img.bin \
+              bpi-r4-poe.itb \
               > sha256sums
           else
             sha256sum \
               openwrt-mediatek-filogic-bananapi_bpi-r4-sdcard.img.gz \
               openwrt-mediatek-filogic-bananapi_bpi-r4-emmc-img.bin \
               bpi-r4.itb \
+              openwrt-mediatek-filogic-bananapi_bpi-r4-poe-sdcard.img.gz \
+              openwrt-mediatek-filogic-bananapi_bpi-r4-poe-emmc-img.bin \
+              bpi-r4-poe.itb \
               > sha256sums
           fi
 
@@ -147,6 +154,8 @@ jobs:
           files: |
             openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-nvme-img.bin
             openwrt/bin/targets/mediatek/filogic/bpi-r4.itb
+            openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-poe-nvme-img.bin
+            openwrt/bin/targets/mediatek/filogic/bpi-r4-poe.itb
             openwrt/bin/targets/mediatek/filogic/sha256sums
             openwrt/bin/targets/mediatek/filogic/config.buildinfo
         env:
@@ -166,6 +175,9 @@ jobs:
             openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-sdcard.img.gz
             openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-emmc-img.bin
             openwrt/bin/targets/mediatek/filogic/bpi-r4.itb
+            openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-poe-sdcard.img.gz
+            openwrt/bin/targets/mediatek/filogic/openwrt-mediatek-filogic-bananapi_bpi-r4-poe-emmc-img.bin
+            openwrt/bin/targets/mediatek/filogic/bpi-r4-poe.itb
             openwrt/bin/targets/mediatek/filogic/sha256sums
             openwrt/bin/targets/mediatek/filogic/config.buildinfo
         env:
